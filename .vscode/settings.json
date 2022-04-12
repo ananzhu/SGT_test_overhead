@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "cstdlib": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "*.tcc": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "hashtable": "cpp",
+        "mutex": "cpp",
+        "vector": "cpp"
+    }
+}
