@@ -801,7 +801,10 @@ struct Database {
       StringStruct<20> stringstruct;
       char buffer[21];
       sprintf(buffer, "%.20lu", cust_id);
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Wstringop-truncation"
       strncpy(stringstruct.string, buffer, 20);
+      #pragma GCC diagnostic pop
 
       name_map->insert(stringstruct, a.customer_id.size());
 
@@ -892,7 +895,10 @@ struct Database {
 
     char buffer[21];
     sprintf(buffer, "%.20lu", cust_id);
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wstringop-truncation"
     strncpy(name.string, buffer, 20);
+    #pragma GCC diagnostic pop
   }
 
   void waitAndTidy() { tc.waitAndTidy(); }
@@ -1370,7 +1376,10 @@ template <unsigned int t>
 struct hash<mv::smallbank::StringStruct<t>> {
   uint64_t operator()(mv::smallbank::StringStruct<t> const& s) {
     char ary[t + 1] = "";
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wstringop-truncation"
     strncpy(ary, s.string, t);
+    #pragma GCC diagnostic pop
     return std::hash<std::string>{}(ary);
   }
 };

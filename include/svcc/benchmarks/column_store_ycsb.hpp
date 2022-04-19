@@ -513,7 +513,11 @@ template <unsigned int t>
 struct hash<sv::ycsb::StringStruct<t>> {
   uint64_t operator()(sv::ycsb::StringStruct<t> const& s) {
     char ary[t + 1] = "";
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wstringop-truncation"
     strncpy(ary, s.string, t);
+    #pragma GCC diagnostic pop
+    
     return std::hash<std::string>{}(ary);
   }
 };

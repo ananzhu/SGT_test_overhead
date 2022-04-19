@@ -454,7 +454,11 @@ struct Database {
       std::stringstream ss;
       ss << std::setfill('0') << std::setw(15) << s_id;
       StringStruct<15> stringstruct;
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Wstringop-truncation"
       strncpy(stringstruct.string, ss.str().c_str(), 15);
+      #pragma GCC diagnostic pop
+      
       s.sub_nbr.push_back(stringstruct);
       subnbr_map->insert(stringstruct, s.s_id.size());
 
@@ -1003,7 +1007,10 @@ template <unsigned int t>
 struct hash<sv::tatp::StringStruct<t>> {
   uint64_t operator()(sv::tatp::StringStruct<t> const& s) {
     char ary[t + 1] = "";
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wstringop-truncation"
     strncpy(ary, s.string, t);
+    #pragma GCC diagnostic pop
     return std::hash<std::string>{}(ary);
   }
 };

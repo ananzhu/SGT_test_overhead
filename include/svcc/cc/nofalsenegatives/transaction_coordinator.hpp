@@ -122,59 +122,55 @@ class TransactionCoordinator {
       return false;
     }
 
-    uint64_t lockInfo = locked[offset];
-    while(__sync_bool_compare_and_swap(&lockInfo, 0, 1)) {;}
-    // uint64_t info = access(transaction, false);
-    // verify(info > 0);
+    uint64_t info = access(transaction, false);
+    verify(info > 0);
 
-    // uint64_t prv = rw_table[offset]->push_front(info);
-    // if (prv > 0) {
-    //   /*
-    //    * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
-    //    * rw_table[offset]
-    //    * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
-    //    * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
-    //    * already finished.
-    //    */
-    //   for (uint32_t i = 0; lsn_column[offset] != prv; i++) {
-    //     if (i >= 10000)
-    //       std::this_thread::yield();
-    //   }
-    // }
+    uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv > 0) {
+      /*
+       * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
+       * rw_table[offset]
+       * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
+       * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
+       * already finished.
+       */
+      for (uint32_t i = 0; lsn_column[offset] != prv; i++) {
+        if (i >= 10000)
+          std::this_thread::yield();
+      }
+    }
     
 
-    // bool cyclic = false;
+    bool cyclic = false;
 
-    // auto it = rw_table[offset]->begin();
-    // for (; it != rw_table[offset]->end(); ++it) {
-    //   if (it.getId() < prv) {
-    //     if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-    //       cyclic = true;
-    //     }
-    //   }
-    // }
+    auto it = rw_table[offset]->begin();
+    for (; it != rw_table[offset]->end(); ++it) {
+      if (it.getId() < prv) {
+        if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
+          cyclic = true;
+        }
+      }
+    }
 
 #ifdef SGLOGGER
     sg_.log(common::LogInfo{transaction, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
 #endif
 
-    // if (cyclic) {
-    //   rw_table[offset]->erase(prv);
-    //   lsn_column.atomic_replace(offset, prv + 1);
-    //   this->abort(transaction);
-    //   return false;
-    // }
+    if (cyclic) {
+      rw_table[offset]->erase(prv);
+      lsn_column.atomic_replace(offset, prv + 1);
+      this->abort(transaction);
+      return false;
+    }
 
     readValue = column[offset];
 
-    // lsn_column.atomic_replace(offset, prv + 1);
+    lsn_column.atomic_replace(offset, prv + 1);
 
-    // auto rti = alloc_->template allocate<ReadTransactionInformation<Vector, List, Allocator>>(1);
-    // atom_info_->emplace_front(
-    //     new (rti) ReadTransactionInformation<Vector, List, Allocator>(rw_table, locked, prv, offset, transaction));
+    auto rti = alloc_->template allocate<ReadTransactionInformation<Vector, List, Allocator>>(1);
+    atom_info_->emplace_front(
+        new (rti) ReadTransactionInformation<Vector, List, Allocator>(rw_table, locked, prv, offset, transaction));
 
-    __sync_bool_compare_and_swap(&lockInfo, 1, 0);
-    
     return true;
   }
 
@@ -200,53 +196,48 @@ class TransactionCoordinator {
       this->abort(transaction);
       return false;
     }
-
-    uint64_t lockInfo = locked[offset];
-    while(__sync_bool_compare_and_swap(&lockInfo, 0, 1)) {;}
     
-    //std::lock_guard<tbb::spin_mutex> lock(mut);
+    std::lock_guard<tbb::spin_mutex> lock(mut);
 
-    // uint64_t info = access(transaction, false);
-    // verify(info > 0);
+    uint64_t info = access(transaction, false);
+    verify(info > 0);
 
-    // uint64_t prv = rw_table[offset]->push_front(info);
-    // if (prv > 0) {
-    //   /*
-    //    * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
-    //    * rw_table[offset]
-    //    * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
-    //    * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
-    //    * already finished.
-    //    */
-    //   for (uint32_t i = 0; lsn_column[offset] != prv; i++) {
-    //     if (i >= 10000)
-    //       std::this_thread::yield();
-    //   }
-    // }
+    uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv > 0) {
+      /*
+       * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
+       * rw_table[offset]
+       * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
+       * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
+       * already finished.
+       */
+      for (uint32_t i = 0; lsn_column[offset] != prv; i++) {
+        if (i >= 10000)
+          std::this_thread::yield();
+      }
+    }
 
-    // bool cyclic = false;
-    // auto it = rw_table[offset]->begin();
+    bool cyclic = false;
+    auto it = rw_table[offset]->begin();
 
-    // for (; it != rw_table[offset]->end(); ++it) {
-    //   if (it.getId() < prv) {
-    //     if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-    //       cyclic = true;
-    //     }
-    //   }
-    // }
+    for (; it != rw_table[offset]->end(); ++it) {
+      if (it.getId() < prv) {
+        if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
+          cyclic = true;
+        }
+      }
+    }
 
 #ifdef SGLOGGER
     sg_.log(common::LogInfo{transaction, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
 #endif
 
-    // if (cyclic) {
-    //   rw_table[offset]->erase(prv);
-    //   lsn_column.atomic_replace(offset, prv + 1);
-    //   this->abort(transaction);
-    //   return 0;
-    // }
-
-    __sync_bool_compare_and_swap(&lockInfo, 1, 0);
+    if (cyclic) {
+      rw_table[offset]->erase(prv);
+      lsn_column.atomic_replace(offset, prv + 1);
+      this->abort(transaction);
+      return 0;
+    }
 
     return true;
   }
@@ -297,103 +288,97 @@ class TransactionCoordinator {
       this->abort(transaction);
       return false;
     }
-    //tbb::spin_mutex wrt_mut;
-    //std::lock_guard<tbb::spin_mutex> lock(wrt_mut);
-    uint64_t lockInfo = locked[offset];
-    while(__sync_bool_compare_and_swap(&lockInfo, 0, 1)) {;}
 
-    // uint64_t info = access(transaction, true);
-    // verify(info > 0);
+    uint64_t info = access(transaction, true);
+    verify(info > 0);
 
-    // uint64_t prv = rw_table[offset]->push_front(info);
-    // if (prv > 0) {
-    //   /*
-    //    * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
-    //    * rw_table[offset]
-    //    * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
-    //    * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
-    //    * already finished.
-    //    */
-    //   for (auto i = 0; lsn_column[offset] != prv; i++) {
-    //     if (i >= 10000)
-    //       std::this_thread::yield();
-    //   }
-    // }
+    uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv > 0) {
+      /*
+       * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
+       * rw_table[offset]
+       * vector the values are initialized with 0. Since the transaction ids must be greater 0, the following
+       * for loop is only evaluated positive iff the transaction id was set beforehand and the vector operation is
+       * already finished.
+       */
+      for (auto i = 0; lsn_column[offset] != prv; i++) {
+        if (i >= 10000)
+          std::this_thread::yield();
+      }
+    }
 
-    // We need to delay w,w conflicts to be able to serialize the graph
-//     auto it_wait = rw_table[offset]->begin();
-//     auto it_end = rw_table[offset]->end();
-//     verify(it_wait != rw_table[offset]->end());
-//     bool cyclic = false, wait = false;
+    //We need to delay w,w conflicts to be able to serialize the graph
+    auto it_wait = rw_table[offset]->begin();
+    auto it_end = rw_table[offset]->end();
+    verify(it_wait != rw_table[offset]->end());
+    bool cyclic = false, wait = false;
 
-//     while (!abort && it_wait != it_end) {
-//       if (it_wait.getId() < prv && std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
-//         if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
-//           // ww-edge hence cascading abort necessary
-//           if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
-//             cyclic = true;
-//           }
-//           wait = true;
-//         }
-//       }
-//       ++it_wait;
-//     }
+    while (!abort && it_wait != it_end) {
+      if (it_wait.getId() < prv && std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
+        if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
+          // ww-edge hence cascading abort necessary
+          if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
+            cyclic = true;
+          }
+          wait = true;
+        }
+      }
+      ++it_wait;
+    }
 
-//     if (!abort) {
-//       if (cyclic) {
-//       cyclic_write:
-//         rw_table[offset]->erase(prv);
-//         lsn_column.atomic_replace(offset, prv + 1);
-//         this->abort(transaction);
+    if (!abort) {
+      if (cyclic) {
+      cyclic_write:
+        rw_table[offset]->erase(prv);
+        lsn_column.atomic_replace(offset, prv + 1);
+        this->abort(transaction);
 
-//         // std::cout << "abort(" << transaction << ") | rw" << std::endl;
-//         return false;
-//       }
+        // std::cout << "abort(" << transaction << ") | rw" << std::endl;
+        return false;
+      }
 
-//       if (wait) {
-//         rw_table[offset]->erase(prv);
-//         lsn_column.atomic_replace(offset, prv + 1);
-//         goto begin_write;
-//       }
+      if (wait) {
+        rw_table[offset]->erase(prv);
+        lsn_column.atomic_replace(offset, prv + 1);
+        goto begin_write;
+      }
 
-//       auto it = rw_table[offset]->begin();
-//       auto end = rw_table[offset]->end();
-//       verify(rw_table[offset]->size() > 0);
-//       verify(it != rw_table[offset]->end());
+      auto it = rw_table[offset]->begin();
+      auto end = rw_table[offset]->end();
+      verify(rw_table[offset]->size() > 0);
+      verify(it != rw_table[offset]->end());
 
-//       while (it != end) {
-//         if (it.getId() < prv) {
-//           // if it is read access this a r-w edge, hence no cascading abort necessary
-//           if (!sg_.insert_and_check(std::get<0>(find(*it)), !std::get<1>(find(*it)))) {
-//             cyclic = true;
-//           }
-//         }
-//         ++it;
-//       }
-// #ifdef SGLOGGER
-//       if (!(wait && !cyclic)) {
-//         char c = 'w';
-//         if (cyclic) {
-//           c = 'e';
-//         }
-//         sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
-//       }
-// #endif
+      while (it != end) {
+        if (it.getId() < prv) {
+          // if it is read access this a r-w edge, hence no cascading abort necessary
+          if (!sg_.insert_and_check(std::get<0>(find(*it)), !std::get<1>(find(*it)))) {
+            cyclic = true;
+          }
+        }
+        ++it;
+      }
+#ifdef SGLOGGER
+      if (!(wait && !cyclic)) {
+        char c = 'w';
+        if (cyclic) {
+          c = 'e';
+        }
+        sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
+      }
+#endif
 
-//       if (cyclic) {
-//         goto cyclic_write;
-//       }
-//     }
+      if (cyclic) {
+        goto cyclic_write;
+      }
+    }
 
     Value old = column.replace(offset, writeValue);
 
-    __sync_bool_compare_and_swap(&lockInfo, 1, 0);
+    lsn_column.atomic_replace(offset, prv + 1);
 
-    // lsn_column.atomic_replace(offset, prv + 1);
-
-    // auto wti = alloc_->template allocate<WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>>(1);
-    // atom_info_->emplace_front(new (wti) WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>(
-    //     writeValue, old, column, lsn_column, rw_table, locked, prv, offset, transaction, abort));
+    auto wti = alloc_->template allocate<WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>>(1);
+    atom_info_->emplace_front(new (wti) WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>(
+        writeValue, old, column, lsn_column, rw_table, locked, prv, offset, transaction, abort));
     return true;
   }
 
@@ -467,13 +452,13 @@ class TransactionCoordinator {
       }
     }
 
-    // for (auto t : *atom_info_){
-    //   t->deleteFromRWTable();
-    //   t->deallocate(alloc_);
-    // }
+    for (auto t : *atom_info_){
+      t->deleteFromRWTable();
+      t->deallocate(alloc_);
+    }
 
-    // atom_info_->~list();
-    // eg_->~EpochGuard();
+    atom_info_->~list();
+    eg_->~EpochGuard();
 
     return true;
   }
