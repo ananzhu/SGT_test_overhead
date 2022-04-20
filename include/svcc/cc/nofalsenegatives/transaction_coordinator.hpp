@@ -141,14 +141,24 @@ class TransactionCoordinator {
     }
     
 
-    bool cyclic = false;
+    // bool cyclic = false;
 
     auto it = rw_table[offset]->begin();
     for (; it != rw_table[offset]->end(); ++it) {
       if (it.getId() < prv) {
-        if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-          cyclic = true;
+        uintptr_t from_node_addr = std::get<0>(find(*it));
+
+        if (from_node_addr > transaction && std::get<1>(find(*it))){ //die
+          rw_table[offset]->erase(prv);
+          lsn_column.atomic_replace(offset, prv + 1);
+          this->abort(transaction);
+          return false;
+        }else if (std::get<1>(find(*it))) { //establish the wr-dependency
+          sg_.insert_and_check(std::get<0>(find(*it)), false);
         }
+        // if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
+        //   cyclic = true;
+        // }
       }
     }
 
@@ -156,12 +166,12 @@ class TransactionCoordinator {
     sg_.log(common::LogInfo{transaction, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
 #endif
 
-    if (cyclic) {
-      rw_table[offset]->erase(prv);
-      lsn_column.atomic_replace(offset, prv + 1);
-      this->abort(transaction);
-      return false;
-    }
+    // if (cyclic) {
+    //   rw_table[offset]->erase(prv);
+    //   lsn_column.atomic_replace(offset, prv + 1);
+    //   this->abort(transaction);
+    //   return false;
+    // }
 
     readValue = column[offset];
 
@@ -197,7 +207,7 @@ class TransactionCoordinator {
       return false;
     }
     
-    std::lock_guard<tbb::spin_mutex> lock(mut);
+    //std::lock_guard<tbb::spin_mutex> lock(mut);
 
     uint64_t info = access(transaction, false);
     verify(info > 0);
@@ -222,9 +232,20 @@ class TransactionCoordinator {
 
     for (; it != rw_table[offset]->end(); ++it) {
       if (it.getId() < prv) {
-        if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-          cyclic = true;
+        uintptr_t from_node_addr = std::get<0>(find(*it));
+        
+        if (from_node_addr > transaction && std::get<1>(find(*it))){ //die
+          rw_table[offset]->erase(prv);
+          lsn_column.atomic_replace(offset, prv + 1);
+          this->abort(transaction);
+          return false;
+        }else if (std::get<1>(find(*it))) { //establish the wr-dependency
+          sg_.insert_and_check(std::get<0>(find(*it)), false);
         }
+       
+        // if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
+        //   cyclic = true;
+        // }
       }
     }
 
@@ -239,7 +260,7 @@ class TransactionCoordinator {
       return 0;
     }
 
-    return true;
+    return prv + 1;
   }
 
   template <template <typename> class Vector, template <typename> class List>
@@ -314,63 +335,86 @@ class TransactionCoordinator {
     bool cyclic = false, wait = false;
 
     while (!abort && it_wait != it_end) {
+      //ww-edge
       if (it_wait.getId() < prv && std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
-        if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
-          // ww-edge hence cascading abort necessary
-          if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
-            cyclic = true;
-          }
-          wait = true;
+         uintptr_t from_node_addr = std::get<0>(find(*it_wait));
+        
+         if (from_node_addr > transaction) {//die
+           rw_table[offset]->erase(prv);
+           lsn_column.atomic_replace(offset, prv + 1);
+           this->abort(transaction);
+           return false;
+         } else if (std::get<1>(find(*it_wait))) { //establish the ww-dependency
+           sg_.insert_and_check(std::get<0>(find(*it_wait)), false);
+        }
+        // if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
+        //   // ww-edge hence cascading abort necessary
+        //   if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
+        //     cyclic = true;
+        //   }
+        //   wait = true;
+        // }
+      } else if (it_wait.getId() < prv && !std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
+        //rw-edge
+         uintptr_t from_node_addr = std::get<0>(find(*it_wait));
+         
+         if (from_node_addr > transaction){ //die
+           rw_table[offset]->erase(prv);
+           lsn_column.atomic_replace(offset, prv + 1);
+           this->abort(transaction);
+           return false;
+         }else if (!std::get<1>(find(*it_wait))) { //establish the rw-dependency
+           sg_.insert_and_check(std::get<0>(find(*it_wait)), true);
         }
       }
       ++it_wait;
     }
 
-    if (!abort) {
-      if (cyclic) {
-      cyclic_write:
-        rw_table[offset]->erase(prv);
-        lsn_column.atomic_replace(offset, prv + 1);
-        this->abort(transaction);
+//     if (!abort) {
+//       if (cyclic) {
+//       cyclic_write:
+//         rw_table[offset]->erase(prv);
+//         lsn_column.atomic_replace(offset, prv + 1);
+//         this->abort(transaction);
 
-        // std::cout << "abort(" << transaction << ") | rw" << std::endl;
-        return false;
-      }
+//         // std::cout << "abort(" << transaction << ") | rw" << std::endl;
+//         return false;
+//       }
 
-      if (wait) {
-        rw_table[offset]->erase(prv);
-        lsn_column.atomic_replace(offset, prv + 1);
-        goto begin_write;
-      }
+//       if (wait) {
+//         rw_table[offset]->erase(prv);
+//         lsn_column.atomic_replace(offset, prv + 1);
+//         goto begin_write;
+//       }
 
-      auto it = rw_table[offset]->begin();
-      auto end = rw_table[offset]->end();
-      verify(rw_table[offset]->size() > 0);
-      verify(it != rw_table[offset]->end());
+//       auto it = rw_table[offset]->begin();
+//       auto end = rw_table[offset]->end();
+//       verify(rw_table[offset]->size() > 0);
+//       verify(it != rw_table[offset]->end());
 
-      while (it != end) {
-        if (it.getId() < prv) {
-          // if it is read access this a r-w edge, hence no cascading abort necessary
-          if (!sg_.insert_and_check(std::get<0>(find(*it)), !std::get<1>(find(*it)))) {
-            cyclic = true;
-          }
-        }
-        ++it;
-      }
-#ifdef SGLOGGER
-      if (!(wait && !cyclic)) {
-        char c = 'w';
-        if (cyclic) {
-          c = 'e';
-        }
-        sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
-      }
-#endif
+//       while (it != end) {
+//         if (it.getId() < prv) {
+//           // if it is read access this a r-w edge, hence no cascading abort necessary
+//           if (!sg_.insert_and_check(std::get<0>(find(*it)), !std::get<1>(find(*it)))) {
+//             cyclic = true;
+//           }
+//         }
+//         ++it;
+//       }
+// #ifdef SGLOGGER
+//       if (!(wait && !cyclic)) {
+//         char c = 'w';
+//         if (cyclic) {
+//           c = 'e';
+//         }
+//         sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
+//       }
+// #endif
 
-      if (cyclic) {
-        goto cyclic_write;
-      }
-    }
+//       if (cyclic) {
+//         goto cyclic_write;
+//       }
+//     }
 
     Value old = column.replace(offset, writeValue);
 

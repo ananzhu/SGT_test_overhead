@@ -184,13 +184,13 @@ bool SerializationGraph::insert_and_check(uintptr_t from_node, bool readwrite) {
       that_node->outgoing_nodes_->insert(accessEdge(this_node, readwrite));
       that_node->mut_.unlock_shared();
 
-      bool cycle;
-      if (online_) {
-        cycle = !cycleCheckNaive();
-      } else {
-        cycle = !cycleCheckNaive();
-      }
-      return cycle;
+      // bool cycle;
+      // if (online_) {
+      //   cycle = !cycleCheckNaive();
+      // } else {
+      //   cycle = !cycleCheckNaive();
+      // }
+      // return cycle;
     }
     return true;
   }
@@ -300,10 +300,10 @@ bool SerializationGraph::checkCommited() {
 }
 
 bool SerializationGraph::erase_graph_constraints() {
-  if (cycleCheckNaive()) {
-    this_node->abort_ = true;
-    return false;
-  }
+  // if (cycleCheckNaive()) {
+  //   this_node->abort_ = true;
+  //   return false;
+  // }
 
   this_node->commited_ = true;
 
