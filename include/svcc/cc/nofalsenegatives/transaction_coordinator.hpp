@@ -346,7 +346,7 @@ class TransactionCoordinator {
            return false;
          } else if (std::get<1>(find(*it_wait))) { //establish the ww-dependency
            sg_.insert_and_check(std::get<0>(find(*it_wait)), false);
-        }
+         }
         // if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
         //   // ww-edge hence cascading abort necessary
         //   if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
@@ -470,7 +470,7 @@ class TransactionCoordinator {
      * Otherwise, wait and yield for the other transactions having committed or aborted.
      */
 
-    bool all_pending_transactions_commited = true;
+    bool all_pending_transactions_commited = false;
     while (!all_pending_transactions_commited) {
       auto not_alive = not_alive_.find(transaction);
       if (not_alive != not_alive_.end()) {

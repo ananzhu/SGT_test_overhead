@@ -33,7 +33,7 @@
 #include <thread>
 #include <unordered_set>
 
-//#define SGLOGGER 1
+#define SGLOGGER 0
 
 namespace nofalsenegatives {
 namespace serial {

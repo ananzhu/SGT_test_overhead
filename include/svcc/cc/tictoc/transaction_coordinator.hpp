@@ -197,7 +197,7 @@ class TransactionCoordinator {
       return false;
 
 #ifdef SGLOGGER
-    v_.log(common::LogInfo{transaction, 0, reinterpret_cast<uintptr_t>(&column), offset, 'r'});
+    //v_.log(common::LogInfo{transaction, 0, reinterpret_cast<uintptr_t>(&column), offset, 'r'});
 #endif
 
     auto rti = alloc_->template allocate<ReadTransactionInformation<Vector, List, Allocator>>(1);

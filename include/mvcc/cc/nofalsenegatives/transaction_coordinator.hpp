@@ -166,7 +166,7 @@ class TransactionCoordinator {
       if (cyclic) {
         c = 'f';
       }
-      sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
+      //sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
 #endif
 
       if (cyclic) {
@@ -350,7 +350,7 @@ class TransactionCoordinator {
       if (cyclic) {
         c = 'e';
       }
-      sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
+      //sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
     }
 #endif
 
