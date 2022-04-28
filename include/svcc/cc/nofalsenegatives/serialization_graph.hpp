@@ -33,7 +33,7 @@
 #include <thread>
 #include <unordered_set>
 
-#define SGLOGGER 0
+#define SGLOGGER 1
 
 namespace nofalsenegatives {
 namespace serial {
@@ -49,6 +49,7 @@ struct Node {
   std::atomic<bool> cleaned_;
   std::atomic<bool> checked_;
   std::atomic<uint64_t> abort_through_;
+  std::atomic<uint64_t> start_ts_; //for late timestamp assignment, reduce abort rate
   common::SharedSpinMutex mut_;
 
   Node(NodeSet* outgoing, NodeSet* incoming)
@@ -60,7 +61,9 @@ struct Node {
         cleaned_(false),
         checked_(false),
         abort_through_(0),
-        mut_() {}
+        start_ts_(0),
+        mut_() {};
+  Node(){}
 };
 
 /* The lowest bit is used to determine whether an abort is needed */

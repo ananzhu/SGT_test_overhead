@@ -26,7 +26,7 @@
 #include <list>
 #include <map>
 
-// #define SGLOGGER 1
+#define SGLOGGER 1
 
 namespace mv {
 namespace mvocc {

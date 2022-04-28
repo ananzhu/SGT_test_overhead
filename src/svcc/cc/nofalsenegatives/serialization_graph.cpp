@@ -69,6 +69,7 @@ uintptr_t SerializationGraph::createNode() {
     empty_sets.rns->pop_back();
     i++;
   }
+  
   for (; i < 2; i++) {
     created_sets_++;
     sets[i] = new Node::NodeSet{std::thread::hardware_concurrency() >= 32 ? std::thread::hardware_concurrency() >> 4

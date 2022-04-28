@@ -44,6 +44,7 @@
 #define verify(expression) ((void)(expression))
 #endif
 
+
 namespace nofalsenegatives {
 namespace transaction {
 
@@ -58,6 +59,7 @@ using namespace nofalsenegatives::transaction;
  * strategies.
  *
  */
+
 template <typename Allocator>
 class TransactionCoordinator {
  public:
@@ -65,6 +67,7 @@ class TransactionCoordinator {
 
  private:
   serial::SerializationGraph sg_;
+  serial::Node node_;
   Allocator* alloc_;
   atom::EpochManagerBase<Allocator>* emb_;
   tbb::spin_mutex mut;
@@ -126,6 +129,9 @@ class TransactionCoordinator {
     verify(info > 0);
 
     uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv == 0) 
+       reinterpret_cast<serial::Node*>(transaction)->start_ts_ = 
+          transaction_counter_.fetch_add(1);
     if (prv > 0) {
       /*
        * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
@@ -139,31 +145,45 @@ class TransactionCoordinator {
           std::this_thread::yield();
       }
     }
-    
-
+    /*
+     * we divide the situation into two categories. one is the incoming txn's start_ts_ is great than zero
+     * in this case, if the incoming txn's operation is conflict with operated txn's and the operated txn's
+     * start_ts_ is assigned the incoming txn must abort. in this case, the incoming txn's start_ts_ is definitly 
+     * great than operated txn's. if conflicted and operated txn's start_ts_ is not assigned, so we can reduce 
+     * one abort, because we can assign the operated txn start timestamp first.
+     * incoming txn and operated txn are both read operation, 
+     */
     // bool cyclic = false;
-
+    std::atomic<uint64_t> my_ts = 
+      reinterpret_cast<serial::Node*>(transaction)->start_ts_.load();
     auto it = rw_table[offset]->begin();
-    for (; it != rw_table[offset]->end(); ++it) {
-      if (it.getId() < prv) {
-        uintptr_t from_node_addr = std::get<0>(find(*it));
 
-        if (from_node_addr > transaction && std::get<1>(find(*it))){ //die
+    for (; it != rw_table[offset]->end(); ++it) {
+      uintptr_t from_node_addr = std::get<0>(find(*it));
+      bool wrt_op = std::get<1>(find(*it));
+      serial::Node *from_txn_node = reinterpret_cast<serial::Node *>(from_node_addr);
+      if (!wrt_op) // no conflict, next
+        continue;
+      if (it.getId() < prv)
+      {
+        if (wrt_op && from_txn_node->start_ts_ > my_ts && my_ts != 0)
+        { // conflict and need to abort
           rw_table[offset]->erase(prv);
           lsn_column.atomic_replace(offset, prv + 1);
           this->abort(transaction);
           return false;
-        }else if (std::get<1>(find(*it))) { //establish the wr-dependency
-          sg_.insert_and_check(std::get<0>(find(*it)), false);
         }
-        // if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-        //   cyclic = true;
-        // }
+        else if (wrt_op && my_ts == 0)
+        { // conflict, but no need to abort
+           reinterpret_cast<serial::Node*>(transaction)->start_ts_ =
+                 transaction_counter_.fetch_add(1);
+        }
+        sg_.insert_and_check(std::get<0>(find(*it)), false);
       }
     }
 
 #ifdef SGLOGGER
-    sg_.log(common::LogInfo{transaction, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
+    sg_.log(common::LogInfo{transaction, transaction_counter_.load(), prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
 #endif
 
     // if (cyclic) {
@@ -213,6 +233,11 @@ class TransactionCoordinator {
     verify(info > 0);
 
     uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv == 0) {
+       reinterpret_cast<serial::Node*>(transaction)->start_ts_ = 
+          transaction_counter_.fetch_add(1);
+    }
+
     if (prv > 0) {
       /*
        * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
@@ -227,38 +252,44 @@ class TransactionCoordinator {
       }
     }
 
-    bool cyclic = false;
+    std::atomic<uint64_t> my_ts = 
+      reinterpret_cast<serial::Node*>(transaction)->start_ts_.load();
     auto it = rw_table[offset]->begin();
 
     for (; it != rw_table[offset]->end(); ++it) {
+      uintptr_t from_node_addr = std::get<0>(find(*it));
+      bool wrt_op = std::get<1>(find(*it));
+      serial::Node *from_txn_node = reinterpret_cast<serial::Node *>(from_node_addr);
+      if (!wrt_op) // no conflict, next
+        continue;
       if (it.getId() < prv) {
-        uintptr_t from_node_addr = std::get<0>(find(*it));
-        
-        if (from_node_addr > transaction && std::get<1>(find(*it))){ //die
+        if (wrt_op && from_txn_node->start_ts_ > my_ts && my_ts != 0)
+        { // conflict and need to abort
           rw_table[offset]->erase(prv);
           lsn_column.atomic_replace(offset, prv + 1);
           this->abort(transaction);
           return false;
-        }else if (std::get<1>(find(*it))) { //establish the wr-dependency
-          sg_.insert_and_check(std::get<0>(find(*it)), false);
         }
-       
-        // if (std::get<1>(find(*it)) && !sg_.insert_and_check(std::get<0>(find(*it)), false)) {
-        //   cyclic = true;
-        // }
+        else if (wrt_op && my_ts == 0)
+        { // conflict, but no need to abort
+          reinterpret_cast<serial::Node*>(transaction)->start_ts_ =
+                 transaction_counter_.fetch_add(1);
+        }
+        sg_.insert_and_check(std::get<0>(find(*it)), false);
+        
       }
     }
 
 #ifdef SGLOGGER
-    sg_.log(common::LogInfo{transaction, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
+    sg_.log(common::LogInfo{transaction, transaction_counter_.load(), prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'r'});
 #endif
 
-    if (cyclic) {
-      rw_table[offset]->erase(prv);
-      lsn_column.atomic_replace(offset, prv + 1);
-      this->abort(transaction);
-      return 0;
-    }
+    // if (cyclic) {
+    //   rw_table[offset]->erase(prv);
+    //   lsn_column.atomic_replace(offset, prv + 1);
+    //   this->abort(transaction);
+    //   return 0;
+    // }
 
     return prv + 1;
   }
@@ -297,7 +328,6 @@ class TransactionCoordinator {
      * between cause he is either before or after me.
      */
 
-  begin_write:
     verify(transaction > 0);
 
     auto not_alive = not_alive_.find(transaction);
@@ -314,6 +344,11 @@ class TransactionCoordinator {
     verify(info > 0);
 
     uint64_t prv = rw_table[offset]->push_front(info);
+    if (prv == 0) {
+       reinterpret_cast<serial::Node*>(transaction)->start_ts_ = 
+          transaction_counter_.fetch_add(1);
+    }
+
     if (prv > 0) {
       /*
        * expected_id is fine for coluom check since if the prv transaction is not yet finished in the
@@ -332,99 +367,54 @@ class TransactionCoordinator {
     auto it_wait = rw_table[offset]->begin();
     auto it_end = rw_table[offset]->end();
     verify(it_wait != rw_table[offset]->end());
-    bool cyclic = false, wait = false;
-
+    //bool cyclic = false, wait = false;
+    std::atomic<uint64_t> my_ts = 
+      reinterpret_cast<serial::Node*>(transaction)->start_ts_.load();
     while (!abort && it_wait != it_end) {
       //ww-edge
       if (it_wait.getId() < prv && std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
          uintptr_t from_node_addr = std::get<0>(find(*it_wait));
-        
-         if (from_node_addr > transaction) {//die
+         serial::Node *from_txn_node = reinterpret_cast<serial::Node *>(from_node_addr);
+         if (from_txn_node->start_ts_ > my_ts && my_ts != 0) {//die
            rw_table[offset]->erase(prv);
            lsn_column.atomic_replace(offset, prv + 1);
            this->abort(transaction);
            return false;
-         } else if (std::get<1>(find(*it_wait))) { //establish the ww-dependency
-           sg_.insert_and_check(std::get<0>(find(*it_wait)), false);
+         } else if (my_ts == 0) { //establish the ww-dependency
+           
+            reinterpret_cast<serial::Node*>(transaction)->start_ts_ =
+                 transaction_counter_.fetch_add(1); 
          }
-        // if (!sg_.isCommited(std::get<0>(find(*it_wait)))) {
-        //   // ww-edge hence cascading abort necessary
-        //   if (!sg_.insert_and_check(std::get<0>(find(*it_wait)), false)) {
-        //     cyclic = true;
-        //   }
-        //   wait = true;
-        // }
+         sg_.insert_and_check(std::get<0>(find(*it_wait)), false);
       } else if (it_wait.getId() < prv && !std::get<1>(find(*it_wait)) && std::get<0>(find(*it_wait)) != transaction) {
         //rw-edge
          uintptr_t from_node_addr = std::get<0>(find(*it_wait));
-         
-         if (from_node_addr > transaction){ //die
+         serial::Node *from_txn_node = reinterpret_cast<serial::Node *>(from_node_addr);
+         if (from_txn_node->start_ts_ > my_ts && my_ts != 0) { //die
            rw_table[offset]->erase(prv);
            lsn_column.atomic_replace(offset, prv + 1);
            this->abort(transaction);
            return false;
-         }else if (!std::get<1>(find(*it_wait))) { //establish the rw-dependency
-           sg_.insert_and_check(std::get<0>(find(*it_wait)), true);
-        }
+         } else if (my_ts == 0) { //establish the rw-dependency
+           reinterpret_cast<serial::Node*>(transaction)->start_ts_ =
+                 transaction_counter_.fetch_add(1);
+         }
+         sg_.insert_and_check(std::get<0>(find(*it_wait)), true);
       }
       ++it_wait;
     }
 
-//     if (!abort) {
-//       if (cyclic) {
-//       cyclic_write:
-//         rw_table[offset]->erase(prv);
-//         lsn_column.atomic_replace(offset, prv + 1);
-//         this->abort(transaction);
-
-//         // std::cout << "abort(" << transaction << ") | rw" << std::endl;
-//         return false;
-//       }
-
-//       if (wait) {
-//         rw_table[offset]->erase(prv);
-//         lsn_column.atomic_replace(offset, prv + 1);
-//         goto begin_write;
-//       }
-
-//       auto it = rw_table[offset]->begin();
-//       auto end = rw_table[offset]->end();
-//       verify(rw_table[offset]->size() > 0);
-//       verify(it != rw_table[offset]->end());
-
-//       while (it != end) {
-//         if (it.getId() < prv) {
-//           // if it is read access this a r-w edge, hence no cascading abort necessary
-//           if (!sg_.insert_and_check(std::get<0>(find(*it)), !std::get<1>(find(*it)))) {
-//             cyclic = true;
-//           }
-//         }
-//         ++it;
-//       }
-// #ifdef SGLOGGER
-//       if (!(wait && !cyclic)) {
-//         char c = 'w';
-//         if (cyclic) {
-//           c = 'e';
-//         }
-//         sg_.log(common::LogInfo{transaction, val, reinterpret_cast<uintptr_t>(&rw_table), offset, c});
-//       }
-// #endif
-
-//       if (cyclic) {
-//         goto cyclic_write;
-//       }
-//     }
+#ifdef SGLOGGER  
+  sg_.log(common::LogInfo{transaction, transaction_counter_, prv, reinterpret_cast<uintptr_t>(&rw_table), offset, 'w'});
+#endif
 
     Value old = column.replace(offset, writeValue);
-
     lsn_column.atomic_replace(offset, prv + 1);
-
     auto wti = alloc_->template allocate<WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>>(1);
     atom_info_->emplace_front(new (wti) WriteTransactionInformation<Value, ValueVector, Vector, List, Allocator>(
         writeValue, old, column, lsn_column, rw_table, locked, prv, offset, transaction, abort));
     return true;
-  }
+ }
 
   /*
    * Abort: Needs to redo all write operations of the aborted transaction and needs to abort all transactions

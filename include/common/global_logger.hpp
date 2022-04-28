@@ -32,6 +32,7 @@ namespace common {
 
 struct LogInfo {
   uint64_t transaction_id;
+  uint64_t start_ts;
   uint64_t log_id;
   uint64_t table_id;
   uint64_t offset;
@@ -55,8 +56,9 @@ class GlobalLogger {
   void writeLogToFile() {
     for (auto l : log_information_) {
       std::ofstream log_file(log_name, std::ios_base::out | std::ios_base::app);
-      (log_file << l.rwac << "," << l.transaction_id << "," << l.log_id << "," << l.table_id << "," << l.offset)
-          << std::endl;
+      (log_file << l.rwac << "," << l.transaction_id << "," << l.start_ts << "," 
+                << l.log_id << "," << l.table_id << "," << l.offset)
+                << std::endl;
     }
   }
 

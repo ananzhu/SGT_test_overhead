@@ -45,7 +45,7 @@ class TransactionInformationBase {
 
   virtual uint64_t getCurrentTimeStamp() = 0;
   virtual uint64_t getPreviousCurrentTimeStamp() = 0;
-  uint64_t getTimeStamp() { return timestamp_; }
+  uint64_t getTimeStamp() { return transaction_counter_; }
 
   virtual bool sameDataElem(void* column, uint64_t offset) = 0;
   virtual bool compare_and_swap(uint64_t v1, uint64_t v2) = 0;
@@ -54,14 +54,14 @@ class TransactionInformationBase {
   virtual uint64_t getOffset() = 0;
 
   TransactionInformationBase(uint64_t timestamp, bool write_transaction)
-      : write_transaction_(write_transaction), timestamp_(timestamp) {}
+      : write_transaction_(write_transaction), transaction_counter_(timestamp) {}
   virtual ~TransactionInformationBase() {}
 
  private:
   bool write_transaction_;
 
  protected:
-  uint64_t timestamp_;
+  uint64_t transaction_counter_;
 };
 
 template <typename Value,
